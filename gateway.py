@@ -23,6 +23,12 @@ import IRSensor as ir
 
 import ledcontrol
 import faultmanagerscreen
+import configloader
+
+
+# first
+gatewayconfig = configloader.ConfigLoader("/etc/gatewayconfig.json") # any exception this function throws should kill the program
+
 
 '''
 LED setup
@@ -30,8 +36,7 @@ LED setup
 
 GPIO.setmode(GPIO.BCM)
 
-ledconfig = {'gw_power': {'r': 19, 'g': 13}, 'gw': {'r': 6, 'g': 5}, 'rfid': {'g' : 20, 'r' : 21}}
-lc = ledcontrol.LEDControl(ledconfig,ledcontrol.LEDAnimationOff(),False)
+lc = ledcontrol.LEDControl(gatewayconfig.getLedconfig(), ledcontrol.LEDAnimationOff(), gatewayconfig.getLedInversion())
 lc.start()
 
 '''

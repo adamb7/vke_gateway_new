@@ -1,13 +1,11 @@
 import json
 import ledcontrol
 
-CARCONFIG_PATH="/etc/carconfig.json"
+class ConfigLoader():
 
-class CarConfigLoader():
+	def __init__(self,fname): # thorws: FileExceptions and JSON parse exceptions
 
-	def __init__(self): # thorws: FileExceptions and JSON parse exceptions
-
-		with open(CARCONFIG_PATH) as f:
+		with open(fname) as f:
 			self._conf = json.load(f)
 
 
