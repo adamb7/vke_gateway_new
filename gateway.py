@@ -1,3 +1,5 @@
+#!/usr/bin/env python2
+
 import json
 import os
 import paho.mqtt.client as paho
@@ -6,9 +8,9 @@ from RPi import GPIO
 try:
     from urllib.request import urlopen
 except ImportError:
-    
+
     from urllib2 import urlopen
-    
+
 import logging
 import traceback
 
@@ -29,7 +31,7 @@ LED setup
 GPIO.setmode(GPIO.BCM)
 
 ledconfig = {'gw_power': {'r': 19, 'g': 13}, 'gw': {'r': 6, 'g': 5}, 'rfid': {'g' : 20, 'r' : 21}}
-lc = ledcontrol.LEDControl(ledconfig,ledcontrol.LEDAnimationOff(),True)
+lc = ledcontrol.LEDControl(ledconfig,ledcontrol.LEDAnimationOff(),False)
 lc.start()
 
 '''
@@ -48,27 +50,28 @@ pause_event = threading.Event() # tessek odafigyelni, hogy nem minden szal szere
 pause_event.set() # not blocking by default
 
 systemStarted = False
+reset_active = False
 
 
 '''
 IR Sensing ezt hivogatja ha lat valamit
 borzaszto nagy retek
 '''
-reset_active = False
 def IRCallback():
     global last_time, reset_active
     global RFID_warehouse_error_running
     global pause_event
-     
+
     if reset_active: # szoval, ha active a reset, es vissza ert a helyere
-        EndDemo(3.5) # akkor varja meg azt a 6mp-t es alljon meg
+        print("reset sequence done")
+        EndDemo(3.5)
         reset_active = False # a reset flaget hozza helyre
         if systemStarted:
             client.publish(carManagement, stopReset, qos=1) # a reset flag-et az auton is billentse be ??
-        
-        
-    elif not RFID_warehouse_error_running and (time.time() - last_time) > 25: 
-        
+
+
+    elif not RFID_warehouse_error_running and (time.time() - last_time) > 25:
+
         if ml.GetLap() == 1:
             client.publish(carManagement, "stop", qos=1)
             RFID_warehouse_error_running = True
@@ -311,7 +314,8 @@ def on_message(client, userdata, msg):
             systemStarted = True
             lc.setAllAnimation(ledcontrol.LEDAnimationGood())
             client.publish(carManagement, "initLED", qos=1)
-            
+            pause_event.set() # ha esetleg valahogy netalantan ez bebugolt volna clear allapotban, akkor reseteljuk, mert kulonben nem indul a demo
+
     else:
         if msg.topic == "stop_system":
             #kell egy "clear" logika
@@ -320,10 +324,13 @@ def on_message(client, userdata, msg):
             #vagy megallitjuk azonnal, vagy a helyere visszuk
             client.publish(carManagement, terminate, qos=1)
             lc.setAllAnimation(ledcontrol.LEDAnimationOff())
-            #os.system('sudo shutdown -r now')
+
             ResetAllErrors() # internal flags
             reset_error() # faultmanager board according to internal flags and publishses it
-        
+            reset_active = False # ha reset kozben csaptunk ra a stop_system-re, akkor kovetkezo inditasnal egy ilyen fel-reset-fel-nem-reset allapot keletkezett, ezt fixalja ez a sor
+            pause_event.set() # unblocking stuff, this should be reseted on system stop as well
+
+
         #"Demo felelesztese alvo modbol", Demot meg nem inditottak el        
         #elif msg.topic == "restart_system" and not reset_active:
         elif msg.topic == "restart_system" and not ml.IsRunning():
@@ -494,7 +501,9 @@ def on_message(client, userdata, msg):
                 reset_active = True
                 ml.SetRunning(False)
                 client.publish(carManagement, startReset, qos=1)
-                reset_error()
+                ResetAllErrors() # internal flags
+                reset_error() # fault manager screen
+                lc.setAllAnimation(ledcontrol.LEDAnimationGood()) # ledek
                 temp = 0
 
             elif msg.topic == "console":
@@ -515,7 +524,7 @@ def ScenarioTest():
     '''
     Minden korre ervenyes esetek
     '''
-    if ml.GetNext() == 1 and ml.GetLap() < 6:
+    if ml.GetNext() == 1 and ml.GetLap() < 6: # toltes indito
         time.sleep(2)
 
 	if reset_active or (not systemStarted): # ha a 2mp varakozas alatt lett volna egy reset vagy system_stop
@@ -523,7 +532,7 @@ def ScenarioTest():
 
         client.publish(carManagement,"startFill")
 
-    elif ml.GetNext() == 0:
+    elif ml.GetNext() == 0: # empty indito
 
 	if reset_active or (not systemStarted): # ha lett volna egy reset vagy system_stop
             return
@@ -533,37 +542,45 @@ def ScenarioTest():
     '''
     Kor specifikus esetek
     '''
-    if ml.GetLap() == 3 and ml.GetNext() == 0:
+    if ml.GetLap() == 3 and ml.GetNext() == 0: # power error
         #classba kitenni
-        time.sleep(8)
+        for i in range(100): # 8 sec
+            time.sleep(0.08)
 
-	if reset_active or (not systemStarted): # ha ez alatt a magic 8mp varakozas alatt valami lenne
-            return
+            pause_event.wait() # ha pause van alljon meg a timer is
+
+            if reset_active or (not systemStarted): # ha ez alatt a magic 8mp varakozas alatt valami lenne
+                return
 
 
         client.publish(carManagement, "stopAndBlink", qos=1)
-        
+
         forklift_power_error_running = True
         fm.applyScenario(faultmanagerscreen.ScenarioForkliftPower)
         publish_to_faultmanager(fm)
-    
+
     #A tank kommunikaciojanak hibaja miatt tettem ide bele
     #De ha az megoldodik, ralehet hagyatkozni a fentebb levo
     #"no_liquid_error" uzenetre
-    elif ml.GetLap() == 5 and ml.GetNext() == 1:
-        time.sleep(2.85)
+    elif ml.GetLap() == 5 and ml.GetNext() == 1: # no liquid error
 
-	if reset_active or (not systemStarted): # ha a varakozas alatt tortent volna egy reset, vagy system_stop
-            return
+
+        for i in range(100): # ez azert van igy, mert pause-re az auto megall, ha a no liquid error ezt nem respecteli, akkor el fog csuszni es unpause alatt a kor elejen all majd meg
+            time.sleep(2.85/100)
+
+            pause_event.wait()
+
+            if reset_active or (not systemStarted): # ha a varakozas alatt tortent volna egy reset, vagy system_stop
+                return
+
 
         client.publish(carManagement, stop, qos=1)
         client.publish(carManagement, stopFill, qos=1)
         #ide majd a no liquid error cuccait
-                
-    elif ml.GetLap() == 5 and ml.GetNext() == 0:     
+
+    elif ml.GetLap() == 5 and ml.GetNext() == 0:
         EndDemo()
-          
-    
+
 
 def EndDemo(delay = 6, resolution=0.05): # ez var 6mp-t, megallitja az autot, es resetel mindent
 
