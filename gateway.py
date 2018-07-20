@@ -22,7 +22,7 @@ import threading
 #kesobb implementalni
 #import LEDTest as led
 
-from IRSensor import IRSensor as ir
+import IRSensor as ir
 
 '''
 LED setup
@@ -76,13 +76,13 @@ def IRCallback():
     if reset_active:
         EndDemo()
         reset_active = False
-        client.publish(carManagement, stopReset)
+        client.publish(carManagement, stopReset, qos=1)
         
         
     elif not RFID_warehouse_error_running and (time.time() - last_time) > 25: 
         
         if ml.GetLap() == 1:
-            client.publish(carManagement, "stop")
+            client.publish(carManagement, "stop", qos=1)
             RFID_warehouse_error_running = True
             
             if not gateway_error_running and not gateway_power_error_running:
@@ -97,7 +97,7 @@ def IRCallback():
                 #nagyon csunya majd kitalalni valamit
                 if not (gateway_power_error_running or gateway_error_running \
                         or belt_plc_error_running):
-                    client.publish(carManagement, start)
+                    client.publish(carManagement, start, qos=1)
                     
                     if not (gateway_power_error_running or gateway_error_running \
                         or belt_plc_error_running):
@@ -266,7 +266,7 @@ def convert_to_json():
         
     json_str += "]}"
     #print(json_str)
-    client.publish("ERROR_DEMO",json_str,retain=True)
+    client.publish("ERROR_DEMO",json_str,retain=True, qos=1)
     
 
 # change the color of the component to newcolor
@@ -455,7 +455,7 @@ def on_message(client, userdata, msg):
         if msg.topic == "start_system":
             systemStarted = True
             InitLEDs()
-            client.publish(carManagement, "initLED")
+            client.publish(carManagement, "initLED", qos=1)
             
     else:
         if msg.topic == "stop_system":
@@ -463,7 +463,7 @@ def on_message(client, userdata, msg):
             systemStarted = False
             ml._Init()
             #vagy megallitjuk azonnal, vagy a helyere visszuk
-            client.publish(carManagement, terminate)
+            client.publish(carManagement, terminate, qos=1)
             ShutDownLeds()
             #os.system('sudo shutdown -r now')
         
@@ -472,7 +472,7 @@ def on_message(client, userdata, msg):
         elif msg.topic == "restart_system" and not ml.IsRunning():
             #ml._Init()
             ml.SetRunning(True)
-            client.publish(carManagement, start)
+            client.publish(carManagement, start, qos=1)
             reset_error()
             temp = 0
             
@@ -499,12 +499,12 @@ def on_message(client, userdata, msg):
                 #IsConsolErrorRunning metodus a demoerror classhoz
                 if not (gateway_error_running or gateway_power_error_running\
                         or belt_plc_error_running):
-                    client.publish(carManagement, start)
+                    client.publish(carManagement, start, qos=1)
                     reset_error()
                     
             elif msg.topic == "no_liquid_error":
                 liquid_error_running = True
-                client.publish(carManagement, stop)
+                client.publish(carManagement, stop, qos=1)
                       
                 if not gateway_power_error_running and not gateway_error_running:
                     error_no_liquid()
@@ -514,18 +514,18 @@ def on_message(client, userdata, msg):
                 liquid_error_running = False
                 
                 if not gateway_power_error_running and not gateway_error_running:
-                    client.publish(carManagement, start)
-                    client.publish(carManagement, resumeFill)
+                    client.publish(carManagement, start, qos=1)
+                    client.publish(carManagement, resumeFill, qos=1)
                     reset_error()
                            
             elif msg.topic == "belt_plc_error":   
                 belt_plc_error_running = True
 
                 if not gateway_error_running and not gateway_power_error_running:
-                    client.publish(carManagement, stop)
+                    client.publish(carManagement, stop, qos=1)
                 
                     if ml.GetNext() == 1:       
-                        client.publish(carManagement, stopFill)
+                        client.publish(carManagement, stopFill, qos=1)
                     
                     error_belt_plc()
                     convert_to_json()
@@ -534,10 +534,10 @@ def on_message(client, userdata, msg):
                 belt_plc_error_running = False
                 
                 if not gateway_error_running and not gateway_power_error_running:
-                    client.publish(carManagement, start)
+                    client.publish(carManagement, start, qos=1)
                     
                     if ml.GetNext() == 1:
-                        client.publish(carManagement, "resumeFill")
+                        client.publish(carManagement, "resumeFill", qos=1)
                     
                     reset_error()
 
@@ -545,11 +545,11 @@ def on_message(client, userdata, msg):
                 gateway_error_running = True
                       
                 if not (gateway_power_error_running or belt_plc_error_running):
-                    client.publish(carManagement, stop)
+                    client.publish(carManagement, stop, qos=1)
                 
                     #valami belt check metodusba ezeket kikellene szervezni
                     if ml.GetNext() == 1:
-                        client.publish(carManagement, stopFill)
+                        client.publish(carManagement, stopFill, qos=1)
                     
                     error_gateway()
                     
@@ -566,20 +566,20 @@ def on_message(client, userdata, msg):
                 print(IsErrorActive())
                 
                 if not IsErrorActive():
-                    client.publish(carManagement, start)
+                    client.publish(carManagement, start, qos=1)
                     if ml.GetNext() == 1:
-                        client.publish(carManagement, resumeFill)
+                        client.publish(carManagement, resumeFill, qos=1)
                     
                     reset_error()
                     
             elif msg.topic == "gateway_power_error":
                 gateway_power_error_running = True
                 
-                client.publish(carManagement, stop)
+                client.publish(carManagement, stop, qos=1)
                 
                 #valami belt check metodusba ezeket kikellene szervezni
                 if ml.GetNext() == 1:
-                    client.publish(carManagement, stopFill)
+                    client.publish(carManagement, stopFill, qos=1)
                      
                 error_gateway_power()
 
@@ -594,10 +594,10 @@ def on_message(client, userdata, msg):
                 
                 #kitenni majd a metodusba
                 if not (gateway_error_running or belt_plc_error_running):
-                    client.publish(carManagement, start)
+                    client.publish(carManagement, start, qos=1)
                 
                     if ml.GetNext() == 1:
-                        client.publish(carManagement, resumeFill)
+                        client.publish(carManagement, resumeFill, qos=1)
                     
                     
                     reset_error()
@@ -638,7 +638,7 @@ def on_message(client, userdata, msg):
             elif msg.topic == "restart_system":
                 reset_active = True
                 ml.SetRunning(False)
-                client.publish(carManagement, startReset)
+                client.publish(carManagement, startReset, qos=1)
                 reset_error()
                 temp = 0
         
@@ -663,7 +663,7 @@ def ScenarioTest():
     if ml.GetLap() == 3 and ml.GetNext() == 0:
         #classba kitenni
         time.sleep(8)
-        client.publish(carManagement, "stopAndBlink")
+        client.publish(carManagement, "stopAndBlink", qos=1)
         
         forklift_power_error_running = True
         error_forklift_power()
@@ -674,8 +674,8 @@ def ScenarioTest():
     #"no_liquid_error" uzenetre
     elif ml.GetLap() == 5 and ml.GetNext() == 1:
         time.sleep(2.85)
-        client.publish(carManagement, stop)
-        client.publish(carManagement, stopFill)
+        client.publish(carManagement, stop, qos=1)
+        client.publish(carManagement, stopFill, qos=1)
         #ide majd a no liquid error cuccait
                 
     elif ml.GetLap() == 5 and ml.GetNext() == 0:     
@@ -685,7 +685,7 @@ def ScenarioTest():
 
 def EndDemo(delay = 6):
     time.sleep(delay)
-    client.publish(carManagement, stop)
+    client.publish(carManagement, stop, qos=1)
     ml._Init()
     temp = 0
     ResetAllErrors()
