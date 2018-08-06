@@ -13,8 +13,6 @@ import logging
 import traceback
 
 import MainLogic as logic
-from MainLogic import Errors
-from MainLogic import DemoErrors
 
 import sys
 import threading
@@ -224,10 +222,6 @@ terminate = "terminate"
 
 
 ml = logic.MainLogic(checkpoints = 3,laps = 6)
-
-#Test, egyelore semmire se hasznalandok
-errors = Errors()
-de = DemoErrors()
 
 '''
 Eza  metodus a Fault manager server gepehez csatlakozik
