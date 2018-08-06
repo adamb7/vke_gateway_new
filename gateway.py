@@ -2,7 +2,7 @@ import json
 import os
 import paho.mqtt.client as paho
 import time
-import RPi.GPIO as GPIO
+from RPi import GPIO
 try:
     from urllib.request import urlopen
 except ImportError:
@@ -17,47 +17,28 @@ import MainLogic as logic
 import sys
 import threading
 
-#kesobb implementalni
-#import LEDTest as led
-
 import IRSensor as ir
+
+import ledcontrol
+import faultmanagerscreen
 
 '''
 LED setup
 '''
 
-'''
-Az LED inverz tulajdonsaga miatt forditva adjuk ki a labakra a jelet
-'''
-'''
-GPIOHigh es low helyett lehetne egyszerubb valtozo
-'''
-'''
-LED kezelo logikat kilehetne tenni kulon modulba / classba
-'''
-GW_POWER_ERR_GREEN = 13 
-GW_POWER_ERR_RED = 19 
-GW_ERR_GREEN = 5 
-GW_ERR_RED = 6 
-
-RFID_GREEN = 20 
-RFID_RED = 21 
-
-on = GPIO.LOW
-off = GPIO.HIGH
-
 GPIO.setmode(GPIO.BCM)
-GPIO.setup(GW_POWER_ERR_GREEN, GPIO.OUT)
-GPIO.setup(GW_POWER_ERR_RED, GPIO.OUT)
-GPIO.setup(GW_ERR_GREEN, GPIO.OUT)
-GPIO.setup(GW_ERR_RED, GPIO.OUT)
-GPIO.setup(RFID_GREEN, GPIO.OUT)
-GPIO.setup(RFID_RED, GPIO.OUT)
 
+ledconfig = {'gw_power': {'r': 19, 'g': 13}, 'gw': {'r': 6, 'g': 5}, 'rfid': {'g' : 20, 'r' : 21}}
+lc = ledcontrol.LEDControl(ledconfig,ledcontrol.LEDAnimationOff(),True)
+lc.start()
 
 '''
-end of LED setup
+Fault manager thingy setup
 '''
+
+fm = faultmanagerscreen.FaultManagerScreen()
+
+
 
 #Jo csunya, majd szepre atirni
 last_time = time.time()
@@ -82,51 +63,30 @@ def IRCallback():
         if ml.GetLap() == 1:
             client.publish(carManagement, "stop", qos=1)
             RFID_warehouse_error_running = True
-            
+
             if not gateway_error_running and not gateway_power_error_running:
-                error_rfid_warehouse()
-                convert_to_json()
-            
-                RFIDErrorLED()
-                
+                fm.applyScenario(faultmanagerscreen.ScenarioRFIDWarehouse)
+                publish_to_faultmanager()
+
+                lc.setAnimation('rfid',ledcontrol.LEDAnimationError())
+                time.sleep(10)
+                lc.setAnimation('rfid',ledcontrol.LEDAnimationGood())
+
                 RFID_warehouse_error_running = False
-                
+
                 #kiirni metodusba
                 #nagyon csunya majd kitalalni valamit
                 if not (gateway_power_error_running or gateway_error_running \
                         or belt_plc_error_running):
                     client.publish(carManagement, start, qos=1)
-                    
+
                     if not (gateway_power_error_running or gateway_error_running \
                         or belt_plc_error_running):
                         reset_error()
         
         last_time = time.time()
-   
-'''            
-kitenni a LED kezelo modulba
-Komm errorhoz hasonlo mukodes van itt, akar lehetne 1 metodusba tenni
-alul van a metodus ami ezt lehetove tenne "GWErrorLEDTest" neven
-'''
-def RFIDErrorLED(delay=0.2, error_duration = 10, hold = 2):
-    GPIO.output(RFID_GREEN,off)
 
-    GPIO.output(RFID_RED,on)
-    time.sleep(hold)
 
-    sample = time.time()
-    
-    while (time.time() - sample) < (error_duration - hold):
-        GPIO.output(RFID_RED, on)
-        time.sleep(delay)
-        GPIO.output(RFID_RED, off)
-        time.sleep(delay)
-        
-    GPIO.output(RFID_RED, off)
-    GPIO.output(RFID_GREEN, on)
-        
-        
-        
 #osszefogo setup metodusba kitenni    
 ir.callback = IRCallback
 ir.StartSampling()
@@ -150,19 +110,6 @@ def InitMQTT():
     client.on_message = on_message
     client.on_publish = on_publish
 
-
-color = []
-is_root = []
-
-my_colors = {"belt_dc_motor": 1, "belt_plc": 2, "pack_moving": 3, "tank_plc": 4,
-             "forklift_plc": 5, "warehouse_RFID": 6, "gateway_power": 7,
-             "belt_tank_power": 8, "forklift_power": 9, "warehouse_power": 10,
-             "gateway": 11, "gateway_ping": 12, "belt_dc_motor_ping": 13,
-             "belt_plc_ping": 14, "pack_moving_ping": 15, "tank_ping": 16,
-             "forklift_plc_ping": 17, "warehouse_RFID_ping": 18, "gateway_power_sensor_ping": 19,
-             "belt_tank_power_sensor_ping": 20, "forklift_power_sensor_ping": 21,
-             "warehouse_power_sensor_ping": 22
-             }
 
 '''
 Ezeket kulon classba kitenni --> "DemoErrors"
@@ -236,154 +183,44 @@ def wait_for_internet_connection(maxTry=100):
         except:
             logging.info("A kapcsolodas nem sikerult a FaultManagerhez. Ujraporbalkozas...")
             tryCount += 1
-    
+
     logging.info("A kapcsolodas nem sikerult a FaultManagerhez.")
-    return False            
-
-def initialize_colors():
-    for i in range(22):
-        color.append('green')
-        is_root.append(0)
+    return False
 
 
-def convert_to_json():
-    global json_str
-    json_str = '{"description":' + '"Status update","values":' + '['
-    for i in range(22):
-        #print(color[i])
-        j = i + 1
-        json_str += "{" + '"' + "id" + '"' + ':' + str(j) + ','
-        json_str += '"' + "color" + '"' + ':' + '"' + color[i] + '"' + ','
-        json_str += '"' + "root" + '"' + ':' + str(is_root[i]) + '}'
-        if i != 21:
-            json_str += ','
-        
-    json_str += "]}"
-    #print(json_str)
-    client.publish("ERROR_DEMO",json_str,retain=True, qos=1)
-    
-
-# change the color of the component to newcolor
-def change_color_root_error(component, newcolor, isroot):
-    if not (color[my_colors[component] - 1] == 'red' and newcolor == 'yellow') and not (
-            color[my_colors[component] - 1] == 'yellow' and newcolor == 'red'):
-        color[my_colors[component] - 1] = newcolor
-        is_root[my_colors[component] - 1] = isroot
-
-
-def change_color_root_reset(component, newcolor):
-    color[my_colors[component] - 1] = newcolor
-
-
-def print_colors():
-    for str in my_colors:
-        print(my_colors[str], str, color[my_colors[str]])
-
-
-def error_belt_plc():
-    change_color_root_error("belt_plc", 'red', 1)
-
-
-def error_no_liquid():
-    change_color_root_error("tank_plc", 'red', 1)
-
-
-def error_forklift_obstacle():
-    change_color_root_error("forklift_plc", 'red', 1)
-
-
-def error_rfid_warehouse():
-    change_color_root_error("warehouse_RFID", 'yellow', 0)
-    change_color_root_error("warehouse_RFID_ping", 'red', 1)
-
-
-# Gateway communication error
-def error_gateway():
-    change_color_root_error("belt_dc_motor", 'yellow', 0)
-    change_color_root_error("belt_plc", 'yellow', 0)
-    change_color_root_error("pack_moving", 'yellow', 0)
-    change_color_root_error("tank_plc", 'yellow', 0)
-    change_color_root_error("forklift_plc", 'yellow', 0)
-    change_color_root_error("warehouse_RFID", 'yellow', 0)
-    change_color_root_error("gateway_power", 'yellow', 0)
-    change_color_root_error("belt_tank_power", 'yellow', 0)
-    change_color_root_error("forklift_power", 'yellow', 0)
-    change_color_root_error("warehouse_power", 'yellow', 0)
-    change_color_root_error("gateway", 'red', 1)
-    # is_root[my_colors["gateway"] - 1] = 1
-    change_color_root_error("belt_dc_motor_ping", 'red', 0)
-    change_color_root_error("belt_plc_ping", 'red', 0)
-    change_color_root_error("pack_moving_ping", 'red', 0)
-    change_color_root_error("tank_ping", 'red', 0)
-    change_color_root_error("forklift_plc_ping", 'red', 0)
-    change_color_root_error("warehouse_RFID_ping", 'red', 0)
-    change_color_root_error("gateway_power_sensor_ping", 'red', 0)
-    change_color_root_error("belt_tank_power_sensor_ping", 'red', 0)
-    change_color_root_error("forklift_power_sensor_ping", 'red', 0)
-    change_color_root_error("warehouse_power_sensor_ping", 'red', 0)
-
-
-# No power for the forklift
-def error_forklift_power():
-    change_color_root_error("forklift_plc", 'yellow', 0)
-    change_color_root_error("forklift_power", 'red', 1)
-    change_color_root_error("forklift_plc_ping", 'red', 0)
-
-
-# Gateway has no power error
-def error_gateway_power():
-    change_color_root_error("gateway", 'yellow', 1)
-    change_color_root_error("gateway_power", 'yellow', 1)
-    error_gateway()
-    # color[my_colors["gateway"] - 1] = 'y'
-    is_root[my_colors["gateway_power"] - 1] = 1
-    change_color_root_error("gateway_ping", 'red', 1)
-    # color[my_colors["gateway_ping"] - 1] = 'r'
-    # is_root[my_colors["gateway_ping"] - 1] = 1
+def publish_to_faultmanager():
+    global fm
+    payload = fm.asJSON()
+    client.publish("ERROR_DEMO", payload, retain=True, qos=1)
 
 
 def reset_error():
-    change_color_root_error("belt_dc_motor", 'green', 0)
-    change_color_root_error("belt_plc", 'green', 0)
-    change_color_root_error("pack_moving", 'green', 0)
-    change_color_root_error("tank_plc", 'green', 0)
-    change_color_root_error("forklift_plc", 'green', 0)
-    change_color_root_error("warehouse_RFID", 'green', 0)
-    change_color_root_error("gateway_power", 'green', 0)
-    change_color_root_error("belt_tank_power", 'green', 0)
-    change_color_root_error("forklift_power", 'green', 0)
-    change_color_root_error("warehouse_power", 'green', 0)
-    change_color_root_error("gateway", 'green', 0)
-    change_color_root_error("gateway_ping",'green',0)
-    change_color_root_error("gateway_power", 'green', 0)
-    change_color_root_error("belt_dc_motor_ping", 'green', 0)
-    change_color_root_error("belt_plc_ping", 'green', 0)
-    change_color_root_error("pack_moving_ping", 'green', 0)
-    change_color_root_error("tank_ping", 'green', 0)
-    change_color_root_error("forklift_plc_ping", 'green', 0)
-    change_color_root_error("warehouse_RFID_ping", 'green', 0)
-    change_color_root_error("gateway_power_sensor_ping", 'green', 0)
-    change_color_root_error("belt_tank_power_sensor_ping", 'green', 0)
-    change_color_root_error("forklift_power_sensor_ping", 'green', 0)
-    change_color_root_error("warehouse_power_sensor_ping", 'green', 0)
-    
-    if gateway_power_error_running:
-        error_gateway_power()
+    global fm
+
+    fm.resetAllState()
+
+    if gateway_power_error_running: # I have no idea what this part does :S
+        fm.applyScenario(faultmanagerscreen.ScenarioGatewayPowerError)
     else:
         if gateway_error_running:
-            error_gateway()
+            fm.applyScenario(faultmanagerscreen.ScenarioGatewayError)
         else:
             if belt_plc_error_running:
-                error_belt_plc()
+                fm.applyScenario(faultmanagerscreen.ScenarioBeltPlcError)
+
             if liquid_error_running:
-                error_no_liquid()
+                fm.applyScenario(faultmanagerscreen.ScenarioNoLiquidError)
+
             if forklift_power_error_running:
-                error_forklift_power()
+                fm.applyScenario(faultmanagerscreen.ScenarioForkliftPower)
+
             if forklift_obstacle_error_running:
-                error_forklift_obstacle()
+                fm.applyScenario(faultmanagerscreen.ScenarioForkliftObstacle)
+
             if RFID_warehouse_error_running:
-                error_rfid_warehouse()
-    convert_to_json()
+                fm.applyScenario(faultmanagerscreen.ScenarioRFIDWarehouse)
+
+    publish_to_faultmanager()
 
 def on_connect(client, userdata, flag, rc):
     global gateway_error_running
@@ -444,11 +281,12 @@ def on_message(client, userdata, msg):
     global systemStarted
     global reset_active
     
+    global fm,lc,ml
     
     if not systemStarted:
         if msg.topic == "start_system":
             systemStarted = True
-            InitLEDs()
+            lc.setAllAnimation(ledcontrol.LEDAnimationGood())
             client.publish(carManagement, "initLED", qos=1)
             
     else:
@@ -458,7 +296,7 @@ def on_message(client, userdata, msg):
             ml._Init()
             #vagy megallitjuk azonnal, vagy a helyere visszuk
             client.publish(carManagement, terminate, qos=1)
-            ShutDownLeds()
+            lc.setAllAnimation(ledcontrol.LEDAnimationOff())
             #os.system('sudo shutdown -r now')
         
         #"Demo felelesztese alvo modbol", Demot meg nem inditottak el        
@@ -477,8 +315,8 @@ def on_message(client, userdata, msg):
                       
                 if not (gateway_power_error_running or gateway_error_running\
                         or belt_plc_error_running):
-                    error_forklift_obstacle()
-                    convert_to_json()
+                    fm.applyScenario(faultmanagerscreen.ScenarioForkliftObstacle)
+                    publish_to_faultmanager()
                     
             elif msg.topic == "forklift_obstacle_error_reset":
                 forklift_obstacle_error_running = False
@@ -501,8 +339,8 @@ def on_message(client, userdata, msg):
                 client.publish(carManagement, stop, qos=1)
                       
                 if not gateway_power_error_running and not gateway_error_running:
-                    error_no_liquid()
-                    convert_to_json()
+                    fm.applyScenario(faultmanagerscreen.ScenarioNoLiquidError)
+                    publish_to_faultmanager()
                     
             elif msg.topic == "no_liquid_error_reset":       
                 liquid_error_running = False
@@ -521,8 +359,8 @@ def on_message(client, userdata, msg):
                     if ml.GetNext() == 1:       
                         client.publish(carManagement, stopFill, qos=1)
                     
-                    error_belt_plc()
-                    convert_to_json()
+                    fm.applyScenario(faultmanagerscreen.ScenarioBeltPlcError)
+                    publish_to_faultmanager()
 
             elif msg.topic=="belt_plc_error_reset":
                 belt_plc_error_running = False
@@ -545,17 +383,16 @@ def on_message(client, userdata, msg):
                     if ml.GetNext() == 1:
                         client.publish(carManagement, stopFill, qos=1)
                     
-                    error_gateway()
+                    fm.applyScenario(faultmanagerscreen.ScenarioGatewayError)
                     
-                    t = threading.Thread(target = gateway_error_led)
-                    t.setDaemon(True)
-                    t.start()
-                    
-                    convert_to_json()
+                    lc.setAnimation('gw',ledcontrol.LEDAnimationError())
+
+                    publish_to_faultmanager()
                     
              
             elif msg.topic == "gateway_error_reset":
                 gateway_error_running = False
+                lc.setAnimation('gw',ledcontrol.LEDAnimationGood())
                 
                 print(IsErrorActive())
                 
@@ -575,17 +412,16 @@ def on_message(client, userdata, msg):
                 if ml.GetNext() == 1:
                     client.publish(carManagement, stopFill, qos=1)
                      
-                error_gateway_power()
+                fm.applyScenario(faultmanagerscreen.ScenarioGatewayPowerError)
 
-                t = threading.Thread(target = gateway_power_error_led)
-                t.setDaemon(True)
-                t.start()
+                lc.setAnimation('gw_power',ledcontrol.LEDAnimationError())
                 
-                convert_to_json()       
+                publish_to_faultmanager()       
                 
             elif msg.topic == "gateway_power_error_reset":
                 gateway_power_error_running = False
-                
+                lc.setAnimation('gw_power',ledcontrol.LEDAnimationGood())
+
                 #kitenni majd a metodusba
                 if not (gateway_error_running or belt_plc_error_running):
                     client.publish(carManagement, start, qos=1)
@@ -635,7 +471,6 @@ def on_message(client, userdata, msg):
                 client.publish(carManagement, startReset, qos=1)
                 reset_error()
                 temp = 0
-        
     
 '''
 A forgatokonyv egy reszet kezeli
@@ -660,8 +495,8 @@ def ScenarioTest():
         client.publish(carManagement, "stopAndBlink", qos=1)
         
         forklift_power_error_running = True
-        error_forklift_power()
-        convert_to_json()
+        fm.applyScenario(faultmanagerscreen.ScenarioForkliftPower)
+        publish_to_faultmanager()
     
     #A tank kommunikaciojanak hibaja miatt tettem ide bele
     #De ha az megoldodik, ralehet hagyatkozni a fentebb levo
@@ -684,113 +519,28 @@ def EndDemo(delay = 6):
     temp = 0
     ResetAllErrors()
     reset_error()
-    
-
-'''
-A kovetkezo ket metodusbol akar 1 et is lehetne csinalni
-'''
-def gateway_error_led(delay = 0.2, hold = 2):
-    GPIO.output(GW_ERR_GREEN, off)
-    
-    GPIO.output(GW_ERR_RED, on)
-    time.sleep(hold)
-    
-    while gateway_error_running:
-        GPIO.output(GW_ERR_RED, on)
-        time.sleep(delay)
-        GPIO.output(GW_ERR_RED, off)
-        time.sleep(delay)
-        
-    GPIO.output(GW_ERR_RED, off)
-    GPIO.output(GW_ERR_GREEN, on)
-
-
-def gateway_power_error_led(delay = 0.2, hold=2):
-    GPIO.output(GW_POWER_ERR_GREEN, off)
-      
-    GPIO.output(GW_POWER_ERR_RED, on)
-    time.sleep(hold)
-      
-    while gateway_power_error_running:
-        GPIO.output(GW_POWER_ERR_RED, on)
-        time.sleep(delay)
-        GPIO.output(GW_POWER_ERR_RED, off)
-        time.sleep(delay)
-         
-    GPIO.output(GW_POWER_ERR_RED, off)
-    GPIO.output(GW_POWER_ERR_GREEN, on)
-
-'''
-TEST
-'''
-'''
-Ez egy normalisan mukodo megoldas csak a "criteria" kulon classkent kell megoldani
-hogy referenciakent adodjon at, mert jelenleg nem ezt teszi
-Ha lesz ido ezt megirni, hogy szep legyen --> "LEDControl" ba
-'''
-def GWErrorLEDTest(greenLED, redLED, criteria, delay=0.2):
-    
-    GPIO.output(greenLED, off)
-       
-    while criteria:
-        GPIO.output(redLED, on)
-        time.sleep(delay)
-        GPIO.output(redLED, off)
-        time.sleep(delay)
-        
-    GPIO.output(redLED, off)
-    GPIO.output(greenLED, on)
-
-'''
-LED -ek alaphelyzetbe allitasa
-'''
-def InitLEDs():
-    GPIO.output(GW_POWER_ERR_RED, off)
-    GPIO.output(GW_POWER_ERR_GREEN, on)
-    GPIO.output(GW_ERR_RED, off)
-    GPIO.output(GW_ERR_GREEN, on)
-    GPIO.output(RFID_RED, off)
-    GPIO.output(RFID_GREEN, on)
-    
-
-'''
-LED -ek kikapcsolasa
-'''
-def ShutDownLeds():
-    GPIO.output(GW_POWER_ERR_GREEN, off)
-    GPIO.output(GW_POWER_ERR_RED, off)
-    GPIO.output(GW_ERR_GREEN, off)
-    GPIO.output(GW_ERR_RED, off)
-    GPIO.output(RFID_RED, off)
-    GPIO.output(RFID_GREEN, off)
 
 
 wait_for_internet_connection()
 
-initialize_colors()
-
 if __name__ == '__main__':
     try:
         '''
-        kene kulon setup metodus hogy ne ezt szemeteljuk tele 
+        kene kulon setup metodus hogy ne ezt szemeteljuk tele
         '''
-        #InitLEDs()
         InitMQTT()
         client.loop_forever()
-        
+
     except KeyboardInterrupt:
         print("Keyboard Interrupt")
-        
+
         try:
-            ShutDownLeds()
-            
+            lc.setAllAnimation(ledcontrol.LEDAnimationOff())
+
         except SystemExit:
             os._exit(0)
-            
+
     finally:
-        #"LEDControl" classba "destroy" metodus kezelje le
-        GPIO.cleanup([GW_POWER_ERR_GREEN, GW_POWER_ERR_RED, \
-                      GW_ERR_GREEN, GW_ERR_RED, RFID_GREEN, \
-                      RFID_RED])
-        
-        convert_to_json()
+	lc.shutdown()
+        fm.resetAllState()
+        publish_to_faultmanager()
