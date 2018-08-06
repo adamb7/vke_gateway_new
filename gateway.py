@@ -298,6 +298,8 @@ def on_message(client, userdata, msg):
             client.publish(carManagement, terminate, qos=1)
             lc.setAllAnimation(ledcontrol.LEDAnimationOff())
             #os.system('sudo shutdown -r now')
+            fm.resetAllState()
+            publish_to_faultmanager() # clean up errors on screen
         
         #"Demo felelesztese alvo modbol", Demot meg nem inditottak el        
         #elif msg.topic == "restart_system" and not reset_active:
