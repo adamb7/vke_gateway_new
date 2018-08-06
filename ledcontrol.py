@@ -1,3 +1,4 @@
+#!/usr/bin/env python2
 import RPi.GPIO as GPIO
 from threading import Thread,Lock,RLock
 import time
