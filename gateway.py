@@ -43,6 +43,13 @@ fm = faultmanagerscreen.FaultManagerScreen()
 #Jo csunya, majd szepre atirni
 last_time = time.time()
 
+# ez arra van, hogy bizonyos szalak blokkoljanak, ha a pause aktiv, de csak akkor amikor kell
+pause_event = threading.Event() # tessek odafigyelni, hogy nem minden szal szereti, ha blokkolva van, de ennek van egy isSet method-ja is
+pause_event.set() # not blocking by default
+
+systemStarted = False
+
+
 '''
 IR Sensing ezt hivogatja ha lat valamit
 borzaszto nagy retek
@@ -51,11 +58,13 @@ reset_active = False
 def IRCallback():
     global last_time, reset_active
     global RFID_warehouse_error_running
+    global pause_event
      
-    if reset_active:
-        EndDemo()
-        reset_active = False
-        client.publish(carManagement, stopReset, qos=1)
+    if reset_active: # szoval, ha active a reset, es vissza ert a helyere
+        EndDemo(3.5) # akkor varja meg azt a 6mp-t es alljon meg
+        reset_active = False # a reset flaget hozza helyre
+        if systemStarted:
+            client.publish(carManagement, stopReset, qos=1) # a reset flag-et az auton is billentse be ??
         
         
     elif not RFID_warehouse_error_running and (time.time() - last_time) > 25: 
@@ -66,10 +75,20 @@ def IRCallback():
 
             if not gateway_error_running and not gateway_power_error_running:
                 fm.applyScenario(faultmanagerscreen.ScenarioRFIDWarehouse)
-                publish_to_faultmanager()
+                publish_to_faultmanager(fm)
 
                 lc.setAnimation('rfid',ledcontrol.LEDAnimationError())
-                time.sleep(10)
+                for i in range(100): # 10mp
+                    time.sleep(0.1)
+
+                    if (not systemStarted) or reset_active: # ha system shutdown vagy reset event erkezett kozben
+                        return
+
+                pause_event.wait()
+
+                if (not systemStarted) or reset_active: # hs system shutdown vagy reset event erkezett kozben
+                    return
+
                 lc.setAnimation('rfid',ledcontrol.LEDAnimationGood())
 
                 RFID_warehouse_error_running = False
@@ -176,21 +195,25 @@ Debug okok miatt a bool visszatereset nem hasznaljuk
 '''
 def wait_for_internet_connection(maxTry=100):
     tryCount = 0
-    while tryCount < 100:
+    while tryCount < maxTry:
         try:
             response=urlopen('http://10.3.141.2:8081/console/',timeout=1)
             return True
+
+        except KeyboardInterrupt:
+            raise # ezt tovabbdobjuk, kulonben nem lehet leloni a programot
+
         except:
             logging.info("A kapcsolodas nem sikerult a FaultManagerhez. Ujraporbalkozas...")
             tryCount += 1
+            time.sleep(2)
 
     logging.info("A kapcsolodas nem sikerult a FaultManagerhez.")
     return False
 
 
-def publish_to_faultmanager():
-    global fm
-    payload = fm.asJSON()
+def publish_to_faultmanager(_fm): # from faultmanagerscreen object
+    payload = _fm.asJSON()
     client.publish("ERROR_DEMO", payload, retain=True, qos=1)
 
 
@@ -220,10 +243,10 @@ def reset_error():
             if RFID_warehouse_error_running:
                 fm.applyScenario(faultmanagerscreen.ScenarioRFIDWarehouse)
 
-    publish_to_faultmanager()
+    publish_to_faultmanager(fm)
 
 def on_connect(client, userdata, flag, rc):
-    global gateway_error_running
+    global gateway_error_running # what are those doing here? :S
     gateway_error_running = False
     global gateway_power_error_running
     gateway_power_error_running = False
@@ -249,7 +272,7 @@ def on_connect(client, userdata, flag, rc):
     client.subscribe("start_system")
     client.subscribe("stop_system")
     client.subscribe("restart_system")
-    client.subscribe("console")
+    client.subscribe("console") # pause channel
 
     client.subscribe(carManagement)
     client.subscribe(positionManagement)
@@ -261,8 +284,7 @@ def on_publish(client, userdata, mid):
 #ezt majd kivenni, ha a position management mukodesbe lep # Kiraly, de amugy mi ez?
 temp = 0
 
-#test, ezt majd a classba kitenni
-systemStarted = False
+
 '''
 Az MQTT rol erkezo uzenetek handlere, a main logika itt helyezkedik el
 '''
@@ -299,8 +321,8 @@ def on_message(client, userdata, msg):
             client.publish(carManagement, terminate, qos=1)
             lc.setAllAnimation(ledcontrol.LEDAnimationOff())
             #os.system('sudo shutdown -r now')
-            fm.resetAllState()
-            publish_to_faultmanager() # clean up errors on screen
+            ResetAllErrors() # internal flags
+            reset_error() # faultmanager board according to internal flags and publishses it
         
         #"Demo felelesztese alvo modbol", Demot meg nem inditottak el        
         #elif msg.topic == "restart_system" and not reset_active:
@@ -319,7 +341,7 @@ def on_message(client, userdata, msg):
                 if not (gateway_power_error_running or gateway_error_running\
                         or belt_plc_error_running):
                     fm.applyScenario(faultmanagerscreen.ScenarioForkliftObstacle)
-                    publish_to_faultmanager()
+                    publish_to_faultmanager(fm)
                     
             elif msg.topic == "forklift_obstacle_error_reset":
                 forklift_obstacle_error_running = False
@@ -343,7 +365,7 @@ def on_message(client, userdata, msg):
                       
                 if not gateway_power_error_running and not gateway_error_running:
                     fm.applyScenario(faultmanagerscreen.ScenarioNoLiquidError)
-                    publish_to_faultmanager()
+                    publish_to_faultmanager(fm)
                     
             elif msg.topic == "no_liquid_error_reset":       
                 liquid_error_running = False
@@ -363,7 +385,7 @@ def on_message(client, userdata, msg):
                         client.publish(carManagement, stopFill, qos=1)
                     
                     fm.applyScenario(faultmanagerscreen.ScenarioBeltPlcError)
-                    publish_to_faultmanager()
+                    publish_to_faultmanager(fm)
 
             elif msg.topic=="belt_plc_error_reset":
                 belt_plc_error_running = False
@@ -390,7 +412,7 @@ def on_message(client, userdata, msg):
                     
                     lc.setAnimation('gw',ledcontrol.LEDAnimationError())
 
-                    publish_to_faultmanager()
+                    publish_to_faultmanager(fm)
                     
              
             elif msg.topic == "gateway_error_reset":
@@ -419,7 +441,7 @@ def on_message(client, userdata, msg):
 
                 lc.setAnimation('gw_power',ledcontrol.LEDAnimationError())
                 
-                publish_to_faultmanager()       
+                publish_to_faultmanager(fm)       
                 
             elif msg.topic == "gateway_power_error_reset":
                 gateway_power_error_running = False
@@ -459,10 +481,10 @@ def on_message(client, userdata, msg):
                 
                 try:
                     inputpos = int(msg.payload)
-                    
-                    #ml.UpdatePosition(inputpos)
-                
-                except:
+
+                    #ml.UpdatePosition(input)
+
+                except ValueError: # ha sima except van it, akkor a KeyboardInterrupt-ot is elkapja
                     traceback.print_exc()
                     logging.debug("Konvertalasi hiba, payload: %s" % msg.payload)
                     
@@ -475,13 +497,15 @@ def on_message(client, userdata, msg):
                 reset_error()
                 temp = 0
 
-            elif msg.topic == "console": # In heavy progress
+            elif msg.topic == "console":
 
-                if msg.payload == "start":
+                if msg.payload == "stop":
                     client.publish(carManagement, "pause", qos=1)
+       	            pause_event.clear() # stuff will be blocked
 
-                elif msg.payload == "stop":
+                elif msg.payload == "start":
                     client.publish(carManagement, "unpause", qos=1)
+                    pause_event.set() # unblocking stuff
 
 
 '''
@@ -493,28 +517,45 @@ def ScenarioTest():
     '''
     if ml.GetNext() == 1 and ml.GetLap() < 6:
         time.sleep(2)
+
+	if reset_active or (not systemStarted): # ha a 2mp varakozas alatt lett volna egy reset vagy system_stop
+            return
+
         client.publish(carManagement,"startFill")
-             
+
     elif ml.GetNext() == 0:
+
+	if reset_active or (not systemStarted): # ha lett volna egy reset vagy system_stop
+            return
+
         client.publish(carManagement,"emptyBottle")
-        
+
     '''
     Kor specifikus esetek
     '''
     if ml.GetLap() == 3 and ml.GetNext() == 0:
         #classba kitenni
         time.sleep(8)
+
+	if reset_active or (not systemStarted): # ha ez alatt a magic 8mp varakozas alatt valami lenne
+            return
+
+
         client.publish(carManagement, "stopAndBlink", qos=1)
         
         forklift_power_error_running = True
         fm.applyScenario(faultmanagerscreen.ScenarioForkliftPower)
-        publish_to_faultmanager()
+        publish_to_faultmanager(fm)
     
     #A tank kommunikaciojanak hibaja miatt tettem ide bele
     #De ha az megoldodik, ralehet hagyatkozni a fentebb levo
     #"no_liquid_error" uzenetre
     elif ml.GetLap() == 5 and ml.GetNext() == 1:
         time.sleep(2.85)
+
+	if reset_active or (not systemStarted): # ha a varakozas alatt tortent volna egy reset, vagy system_stop
+            return
+
         client.publish(carManagement, stop, qos=1)
         client.publish(carManagement, stopFill, qos=1)
         #ide majd a no liquid error cuccait
@@ -524,16 +565,26 @@ def ScenarioTest():
           
     
 
-def EndDemo(delay = 6):
-    time.sleep(delay)
+def EndDemo(delay = 6, resolution=0.05): # ez var 6mp-t, megallitja az autot, es resetel mindent
+
+    delay_remaining = delay
+
+    while delay_remaining > 0:
+        time.sleep(resolution) # ha pause van akkor tobbet is kell varnia... a pause az auto reszerol le van kezelve megallassal, szoval itt csak a sleep-et ehhez igazitjuk
+        if pause_event.isSet(): # not set -> blocking, ide amugy eredetileg a pause_event.wait kellene, mert akkor nem kellene szprakozni.... viszont akkor be lehetne bugoltatni a system started-et, mivel nem csekkolna kozben arra, hogy kozben kapott-e stop_system-et
+        	delay_remaining -= resolution
+
+        if not systemStarted: # elofordulhat, hogy ebben a 6 masodpercben kapunk egy stop_system-et, ebben az esetben a gateway elkuldene az autonak, a dolgokat, meg akkor is ha nem kellene
+            return
+
     client.publish(carManagement, stop, qos=1)
-    ml._Init()
+    ml._Init() # main logic reset
     temp = 0
-    ResetAllErrors()
-    reset_error()
+    ResetAllErrors() # internal flags
+    reset_error() # fault manager screen
 
 
-wait_for_internet_connection()
+wait_for_internet_connection() # http csatlakozast probal
 
 if __name__ == '__main__':
     try:
@@ -555,4 +606,4 @@ if __name__ == '__main__':
     finally:
 	lc.shutdown()
         fm.resetAllState()
-        publish_to_faultmanager()
+        publish_to_faultmanager(fm)

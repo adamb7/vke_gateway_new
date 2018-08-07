@@ -29,7 +29,7 @@ class FaultManagerScreen:
 	def _resetEverything(self):
 		with self._locker:
 			for k in self.error_ids:
-				self._states[k] = {'root' : False, 'state' : self.STATE_OK }
+				self._states[k] = {'root' : False, 'state' : self.STATE_OK } # state = color... csak mashogy hivom
 
 
 	def _buildValues(self):
@@ -56,10 +56,12 @@ class FaultManagerScreen:
 	def resetAllState(self):
 		self._resetEverything()
 
+
 	def setState(self,name,state,root=False):
 		with self._locker:
 			self._states[name]['state'] = state
 			self._states[name]['root'] = root
+
 
 	def applyScenario(self,scenario): # expects error scenario description
 		with self._locker:

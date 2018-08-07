@@ -22,7 +22,7 @@ class LEDAnimationError:
 
 	def __init__(self):
 		self._state = True
-		self._counter = 5
+		self._counter = 10
 
  	def animate(self):
 
