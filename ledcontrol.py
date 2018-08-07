@@ -126,11 +126,7 @@ class LEDControl(Thread):
 
 	def run(self):
 
-		state = False
-
 		while self._running:
-
-			state = not state
 
 			with self._command_lock: # no command should be issueed while we are setting the leds
 				for k,v in self._anims.iteritems(): # key - name of the led group, value - animation to be applied

@@ -249,15 +249,16 @@ def on_connect(client, userdata, flag, rc):
     client.subscribe("start_system")
     client.subscribe("stop_system")
     client.subscribe("restart_system")
+    client.subscribe("console")
 
     client.subscribe(carManagement)
     client.subscribe(positionManagement)
 
-def on_publish(client, userdata, result):
+def on_publish(client, userdata, mid):
     #ide majd logolni kell rendesen
-    print("\nData published: ", userdata)
+    print("Message published: " + str(mid))
 
-#ezt majd kivenni, ha a position management mukodesbe lep
+#ezt majd kivenni, ha a position management mukodesbe lep # Kiraly, de amugy mi ez?
 temp = 0
 
 #test, ezt majd a classba kitenni
@@ -267,7 +268,7 @@ Az MQTT rol erkezo uzenetek handlere, a main logika itt helyezkedik el
 '''
 # Ezt a kommentet modositottam, mert ekezetek voltak benne, es a python meghalt miatta -- Marci
 def on_message(client, userdata, msg):
-    print("Topic: ", msg.topic + "Message: " + msg.payload)
+    print("Topic: " + msg.topic + "  Message: " + msg.payload)
     
     global belt_plc_error_running
     global gateway_error_running
@@ -473,14 +474,23 @@ def on_message(client, userdata, msg):
                 client.publish(carManagement, startReset, qos=1)
                 reset_error()
                 temp = 0
-    
+
+            elif msg.topic == "console": # In heavy progress
+
+                if msg.payload == "start":
+                    client.publish(carManagement, "pause", qos=1)
+
+                elif msg.payload == "stop":
+                    client.publish(carManagement, "unpause", qos=1)
+
+
 '''
 A forgatokonyv egy reszet kezeli
 '''
 def ScenarioTest():
     '''
     Minden korre ervenyes esetek
-    ''' 
+    '''
     if ml.GetNext() == 1 and ml.GetLap() < 6:
         time.sleep(2)
         client.publish(carManagement,"startFill")
