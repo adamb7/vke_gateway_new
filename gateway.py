@@ -47,6 +47,9 @@ fm = faultmanagerscreen.FaultManagerScreen()
 
 
 
+
+
+
 #Jo csunya, majd szepre atirni
 last_time = time.time()
 
@@ -255,6 +258,15 @@ def reset_error():
 
     publish_to_faultmanager(fm)
 
+
+def shutdown_system(): # called by timer
+	print("Shutting down system...")
+	os.system('systemctl poweroff')
+
+
+shutdown_timer = None
+
+
 def on_connect(client, userdata, flag, rc):
     global gateway_error_running # what are those doing here? :S
     gateway_error_running = False
@@ -315,9 +327,18 @@ def on_message(client, userdata, msg):
     global reset_active
     
     global fm,lc,ml
+
+    global shutdown_timer
+
+
     
     if not systemStarted:
         if msg.topic == "start_system":
+
+            if shutdown_timer:
+                shutdown_timer.cancel() # cancel shutting down
+                print("System shutdown canceled")
+
             systemStarted = True
             lc.setAllAnimation(ledcontrol.LEDAnimationGood())
             client.publish(carManagement, "initLED", qos=1)
@@ -336,6 +357,11 @@ def on_message(client, userdata, msg):
             reset_error() # faultmanager board according to internal flags and publishses it
             reset_active = False # ha reset kozben csaptunk ra a stop_system-re, akkor kovetkezo inditasnal egy ilyen fel-reset-fel-nem-reset allapot keletkezett, ezt fixalja ez a sor
             pause_event.set() # unblocking stuff, this should be reseted on system stop as well
+
+
+            shutdown_timer = threading.Timer(15,shutdown_system) # start system shutdown timer
+            shutdown_timer.start()
+            print("System shutdown in 15s! Use start_system to cancel.")
 
 
         #"Demo felelesztese alvo modbol", Demot meg nem inditottak el        
