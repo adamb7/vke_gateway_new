@@ -62,20 +62,22 @@ reset_active = False
 IR Sensing ezt hivogatja ha lat valamit
 borzaszto nagy retek
 '''
-def IRCallback():
+def IRCallback(): # egyszerre csak egy peldany fut belole, nem hiv meg parhuzamosan tobbet az IR szenzor
     global last_time, reset_active
     global RFID_warehouse_error_running
     global pause_event
 
+    print("IR event triggered")
+
     if reset_active: # szoval, ha active a reset, es vissza ert a helyere
         print("reset sequence done")
-        EndDemo(3.5)
+        EndDemo(3.5) # blocking
         reset_active = False # a reset flaget hozza helyre
         if systemStarted:
             client.publish(carManagement, stopReset, qos=1) # a reset flag-et az auton is billentse be ??
 
 
-    elif not RFID_warehouse_error_running and (time.time() - last_time) > 25:
+    elif not RFID_warehouse_error_running and (time.time() - last_time) > 15:
 
         if ml.GetLap() == 1:
             client.publish(carManagement, "stop", qos=1)
@@ -289,7 +291,7 @@ def on_publish(client, userdata, mid):
     #ide majd logolni kell rendesen
     print("Message published: " + str(mid))
 
-#ezt majd kivenni, ha a position management mukodesbe lep # Kiraly, de amugy mi ez?
+#ezt majd kivenni, ha a position management mukodesbe lep # Kiraly, de amugy mi ez? # asszem megfejtettem...
 temp = 0
 
 
@@ -468,21 +470,21 @@ def on_message(client, userdata, msg):
                     
                     
                     reset_error()
-                
+
             elif msg.topic == carManagement:
-                if msg.payload == "update":
+                if msg.payload == "update": # ilyent akkor kapunk, ha az auto at haladt egy meroleges vonalon
                     #ezt majd atkell helyezni de a kocsi egyelore ezt tudja publisholni
                     ml.UpdatePosition(temp)
                     temp += 1
-                    
+
                     #muszaj kulon szaloninditani kulonben nem kulon kuldi az mqtt uzeneteket
                     t = threading.Thread(target=ScenarioTest)
                     t.setDaemon(True)
                     t.start()
-                     
-                    if temp > 2:
+
+                    if temp > 2: # 0,1,2
                         temp = 0
-                
+
                 #ugytunik nem hasznaljuk mar, kiveheto
                 if msg.payload == "ready":
                     pass
@@ -547,7 +549,7 @@ def ScenarioTest():
     '''
     Kor specifikus esetek
     '''
-    if ml.GetLap() == 3 and ml.GetNext() == 0: # power error
+    if ml.GetLap() == 2 and ml.GetNext() == 0: # power error - mivel az uj kor a futoszalag elejen kezdodik, ezert a '3'-as kor valojaban a 2-es kor
         #classba kitenni
         for i in range(100): # 8 sec
             time.sleep(0.08)
