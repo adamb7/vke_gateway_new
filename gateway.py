@@ -268,6 +268,7 @@ shutdown_timer = None
 
 
 def on_connect(client, userdata, flag, rc):
+    lc.setAnimation('gw',ledcontrol.LEDAnimationReady())
     global gateway_error_running # what are those doing here? :S
     gateway_error_running = False
     global gateway_power_error_running
@@ -654,6 +655,8 @@ if __name__ == '__main__':
             os._exit(0)
 
     finally:
+        if shutdown_timer:
+            shutdown_timer.cancel()
 	lc.shutdown()
         fm.resetAllState()
         publish_to_faultmanager(fm)

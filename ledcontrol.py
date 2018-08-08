@@ -18,6 +18,12 @@ class LEDAnimationGood:
 		return {'r': False, 'g': True, 'b': False}
 
 
+class LEDAnimationReady:
+
+	def animate(self):
+		return {'r': True, 'g': False, 'b': False}
+
+
 class LEDAnimationError:
 
 	def __init__(self):
