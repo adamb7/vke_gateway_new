@@ -296,6 +296,7 @@ def on_connect(client, userdata, flag, rc):
     client.subscribe("stop_system")
     client.subscribe("restart_system")
     client.subscribe("console") # pause channel
+    client.subscribe("obstacle_belt_stop") # ha obstacle error van a szalag is alljon meg
 
     client.subscribe(carManagement)
     client.subscribe(positionManagement)
@@ -373,27 +374,35 @@ def on_message(client, userdata, msg):
             client.publish(carManagement, start, qos=1)
             reset_error()
             temp = 0
-            
-        elif ml.IsRunning():         
-            #nem kell kikopni az errort, mert itt generaljuk        
+
+        elif ml.IsRunning():
+            #nem kell kikopni az errort, mert itt generaljuk
             if msg.topic == "forklift_obstacle_error":
                 forklift_obstacle_error_running = True
-                      
+
                 if not (gateway_power_error_running or gateway_error_running\
                         or belt_plc_error_running):
                     fm.applyScenario(faultmanagerscreen.ScenarioForkliftObstacle)
                     publish_to_faultmanager(fm)
-                    
+
+                    if ml.GetNext() == 1: # ha a szalagon van epp
+                        client.publish("obstacle_belt_stop","belt_pause",qos=1)
+
             elif msg.topic == "forklift_obstacle_error_reset":
                 forklift_obstacle_error_running = False
-                
+
                 if not (gateway_error_running or gateway_power_error_running\
                         or belt_plc_error_running):
                     reset_error()
-                    
+
+
+                    if ml.GetNext() == 1: # ha a szalagon van epp
+                        client.publish("obstacle_belt_stop","belt_resume",qos=1)
+
+
             elif msg.topic == "forklift_power_error_reset":
                 forklift_power_error_running = False
-                
+
                 #IsConsolErrorRunning metodus a demoerror classhoz
                 if not (gateway_error_running or gateway_power_error_running\
                         or belt_plc_error_running):
