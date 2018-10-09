@@ -1,0 +1,5 @@
+{
+        "ledconfig": { "gw_power": {"r": 19, "g": 13}, "gw": {"r": 6, "g": 5}, "rfid": {"g" : 20, "r" : 21}},
+        "led_inverted": true,
+        "rgb_led": false
+}
