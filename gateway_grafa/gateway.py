@@ -85,7 +85,7 @@ def IRCallback(): # egyszerre csak egy peldany fut belole, nem hiv meg parhuzamo
         if ml.GetLap() == 1:
             client.publish(carManagement, "stop", qos=1)
             #client.publish(carStatus, stopped, qos=1)  # uj
-            client.publish(errorStatus, "rfid_error_start", qos=1)  # uj
+            client.publish(errorStatus, "rfid_error", qos=1)  # uj
             RFID_warehouse_error_running = True
 
             if not gateway_error_running and not gateway_power_error_running:
@@ -105,7 +105,7 @@ def IRCallback(): # egyszerre csak egy peldany fut belole, nem hiv meg parhuzamo
                     return
 
                 lc.setAnimation('rfid',ledcontrol.LEDAnimationGood())
-                client.publish(errorStatus, "rfid_error_end", qos=1)  # uj
+                client.publish(errorStatus, "rfid_error_reset", qos=1)  # uj
 
                 RFID_warehouse_error_running = False
 
@@ -615,7 +615,7 @@ def ScenarioTest():
 
         client.publish(carManagement, "stopAndBlink", qos=1)
         client.publish(errorStatus, "forklift_power_error", qos=1)  # uj
-        client.publish(carStatus, stopped, qos=1)  # uj ,kocsi miatt
+        client.publish(carStatus, "car_stopped", qos=1)  # uj ,kocsi miatt
 
         forklift_power_error_running = True
         fm.applyScenario(faultmanagerscreen.ScenarioForkliftPower)
