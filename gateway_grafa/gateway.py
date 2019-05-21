@@ -381,7 +381,6 @@ def on_message(client, userdata, msg):
             #ml._Init()
             ml.SetRunning(True)
             client.publish(carManagement, start, qos=1)
-            #client.publish(carStatus, moving, qos=1)#uj
             reset_error()
             temp = 0
 
@@ -390,7 +389,6 @@ def on_message(client, userdata, msg):
             if msg.topic == "forklift_obstacle_error":
                 forklift_obstacle_error_running = True
                 client.publish(errorStatus, "forklift_obstacle_error", qos=1)  # uj
-                #client.publish(carStatus, stopped, qos=1)  # uj
 
                 if not (gateway_power_error_running or gateway_error_running\
                         or belt_plc_error_running):
@@ -403,7 +401,6 @@ def on_message(client, userdata, msg):
             elif msg.topic == "forklift_obstacle_error_reset":
                 forklift_obstacle_error_running = False
                 client.publish(errorStatus, "forklift_obstacle_error_reset", qos=1)  # uj
-                #client.publish(carStatus, moving, qos=1)  # uj
 
                 if not (gateway_error_running or gateway_power_error_running\
                         or belt_plc_error_running):
@@ -422,13 +419,11 @@ def on_message(client, userdata, msg):
                 if not (gateway_error_running or gateway_power_error_running\
                         or belt_plc_error_running):
                     client.publish(carManagement, start, qos=1)
-                    #client.publish(carStatus, moving, qos=1)  # uj
                     reset_error()
                     
             elif msg.topic == "no_liquid_error":
                 liquid_error_running = True
                 client.publish(errorStatus, "no_liquid_error", qos=1)  # uj
-                #client.publish(carStatus, stopped, qos=1)  # uj
                 client.publish(carManagement, stop, qos=1)
                       
                 if not gateway_power_error_running and not gateway_error_running:
@@ -441,7 +436,6 @@ def on_message(client, userdata, msg):
                 
                 if not gateway_power_error_running and not gateway_error_running:
                     client.publish(carManagement, start, qos=1)
-                    #client.publish(carStatus, moving, qos=1)  # uj
                     client.publish(carManagement, resumeFill, qos=1)
                     reset_error()
                            
@@ -450,8 +444,7 @@ def on_message(client, userdata, msg):
 
                 if not gateway_error_running and not gateway_power_error_running:
                     client.publish(carManagement, stop, qos=1)
-                    #client.publish(carStatus, stopped, qos=1)  # uj
-                
+                    client.publish(errorStatus, "belt_plc_error", qos=1)  # uj
                     if ml.GetNext() == 1:       
                         client.publish(carManagement, stopFill, qos=1)
                     
@@ -463,7 +456,7 @@ def on_message(client, userdata, msg):
                 
                 if not gateway_error_running and not gateway_power_error_running:
                     client.publish(carManagement, start, qos=1)
-                    #client.publish(carStatus, moving, qos=1)  # uj
+                    client.publish(errorStatus, "belt_plc_error_reset", qos=1)  # uj
                     
                     if ml.GetNext() == 1:
                         client.publish(carManagement, "resumeFill", qos=1)
@@ -475,8 +468,7 @@ def on_message(client, userdata, msg):
                       
                 if not (gateway_power_error_running or belt_plc_error_running):
                     client.publish(carManagement, stop, qos=1)
-                    #client.publish(carStatus, stopped, qos=1)  # uj
-                
+                    client.publish(errorStatus, "gateway_error", qos=1)  # uj
                     #valami belt check metodusba ezeket kikellene szervezni
                     if ml.GetNext() == 1:
                         client.publish(carManagement, stopFill, qos=1)
@@ -491,12 +483,11 @@ def on_message(client, userdata, msg):
             elif msg.topic == "gateway_error_reset":
                 gateway_error_running = False
                 lc.setAnimation('gw',ledcontrol.LEDAnimationGood())
-                
+                client.publish(errorStatus, "gateway_error_reset", qos=1)  # uj
                 print(IsErrorActive())
                 
                 if not IsErrorActive():
                     client.publish(carManagement, start, qos=1)
-                    #client.publish(carStatus, moving, qos=1)  # uj
                     if ml.GetNext() == 1:
                         client.publish(carManagement, resumeFill, qos=1)
                     
@@ -506,8 +497,7 @@ def on_message(client, userdata, msg):
                 gateway_power_error_running = True
                 
                 client.publish(carManagement, stop, qos=1)
-                #client.publish(carStatus, stopped, qos=1)  # uj
-                
+                client.publish(errorStatus, "gateway_power_error", qos=1)  # uj
                 #valami belt check metodusba ezeket kikellene szervezni
                 if ml.GetNext() == 1:
                     client.publish(carManagement, stopFill, qos=1)
@@ -521,11 +511,10 @@ def on_message(client, userdata, msg):
             elif msg.topic == "gateway_power_error_reset":
                 gateway_power_error_running = False
                 lc.setAnimation('gw_power',ledcontrol.LEDAnimationGood())
-
+                client.publish(errorStatus, "gateway_power_error_reset", qos=1)  # uj
                 #kitenni majd a metodusba
                 if not (gateway_error_running or belt_plc_error_running):
                     client.publish(carManagement, start, qos=1)
-                    #client.publish(carStatus, moving, qos=1)  # uj
                 
                     if ml.GetNext() == 1:
                         client.publish(carManagement, resumeFill, qos=1)
@@ -539,7 +528,6 @@ def on_message(client, userdata, msg):
                     ml.UpdatePosition(temp)
                     temp += 1
 
-                    #client.publish(carStatus, stopped, qos=1)  # uj
 
                     #muszaj kulon szaloninditani kulonben nem kulon kuldi az mqtt uzeneteket
                     t = threading.Thread(target=ScenarioTest)
@@ -560,7 +548,6 @@ def on_message(client, userdata, msg):
                 try:
                     inputpos = int(msg.payload)
                     #if inputpos == 1:
-                        #client.publish(carStatus, moving, qos=1)  # uj
 
                     #ml.UpdatePosition(input)
 
@@ -650,7 +637,6 @@ def ScenarioTest():
 
 
         client.publish(carManagement, stop, qos=1)
-        #client.publish(carStatus, stopped, qos=1)  # uj
         client.publish(carManagement, stopFill, qos=1)
         #ide majd a no liquid error cuccait
 
@@ -671,7 +657,6 @@ def EndDemo(delay = 6, resolution=0.05): # ez var 6mp-t, megallitja az autot, es
             return
 
     client.publish(carManagement, stop, qos=1)
-    #client.publish(carStatus, stopped, qos=1)  # uj
     ml._Init() # main logic reset
     temp = 0
     ResetAllErrors() # internal flags
